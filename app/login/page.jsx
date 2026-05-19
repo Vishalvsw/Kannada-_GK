@@ -4,17 +4,14 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { GoogleOAuthProvider } from '@react-oauth/google';
-import GoogleLogin from '@/components/GoogleLogin';
+import { useGoogleLogin } from '@react-oauth/google';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-// Your Google Client ID
-const GOOGLE_CLIENT_ID = '631788793965-cnah9hm9s0vq7qis7em75jui1net5ebp.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '631788793965-cnah9hm9s0vq7qis7em75jui1net5ebp.apps.googleusercontent.com';
 
 function LoginContent() {
   const { t } = useLanguage();
   const router = useRouter();
-  const [instagramId, setInstagramId] = useState('');
-  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [isMounted, setIsMounted] = useState(false);
@@ -27,63 +24,59 @@ function LoginContent() {
     }
   }, [router]);
 
-  // Don't render anything during SSR to prevent hydration mismatch
+  const login = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setLoading(true);
+      setError('');
+      try {
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+        });
+        const userInfo = await userInfoResponse.json();
+        
+        if (userInfo.error) {
+          throw new Error(userInfo.error_description);
+        }
+        
+        const tempUserData = {
+          id: userInfo.sub,
+          name: userInfo.name,
+          email: userInfo.email,
+          picture: userInfo.picture,
+          googleId: userInfo.sub,
+          role: 'user',
+          score: 0,
+          totalQuizzesTaken: 0,
+          instagramId: null,
+          requiresInstagram: true
+        };
+        
+        localStorage.setItem('tempUser', JSON.stringify(tempUserData));
+        localStorage.setItem('googleToken', tokenResponse.access_token);
+        
+        router.push('/');
+        
+      } catch (error) {
+        console.error('Google login error:', error);
+        setError('Failed to get user info. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    onError: (error) => {
+      console.error('Google Login Failed:', error);
+      setError('Google login failed. Please try again.');
+      setLoading(false);
+    }
+  });
+
   if (!isMounted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center px-4 py-8">
-        <div className="max-w-md w-full">
-          <div className="bg-white rounded-2xl shadow-2xl p-8">
-            <div className="text-center">
-              <div className="animate-spin w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full mx-auto"></div>
-              <p className="text-gray-600 mt-4">Loading...</p>
-            </div>
-          </div>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-4 border-white border-t-transparent rounded-full"></div>
       </div>
     );
   }
-
-  const handleInstagramLogin = async (e) => {
-    e.preventDefault();
-    
-    if (!instagramId) {
-      setError('Please enter your Instagram ID');
-      return;
-    }
-    
-    setLoading(true);
-    setError('');
-    
-    const cleanId = instagramId.replace('@', '');
-    
-    const userData = {
-      id: Date.now().toString(),
-      name: name || cleanId,
-      email: `${cleanId}@instagram.user`,
-      instagramId: cleanId,
-      instagramUsername: cleanId,
-      profileImage: `https://ui-avatars.com/api/?name=${cleanId}&background=3B82F6&color=fff&size=100`,
-      role: 'user',
-      score: 0,
-      totalQuizzesTaken: 0,
-      loginMethod: 'instagram'
-    };
-    
-    localStorage.setItem('user', JSON.stringify(userData));
-    localStorage.setItem('token', 'user-token-' + Date.now());
-    
-    const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    const userExists = existingUsers.find(u => u.instagramId === cleanId);
-    if (!userExists) {
-      existingUsers.push(userData);
-      localStorage.setItem('users', JSON.stringify(existingUsers));
-    }
-    
-    setTimeout(() => {
-      setLoading(false);
-      router.push('/');
-    }, 500);
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center px-4 py-8">
@@ -92,7 +85,7 @@ function LoginContent() {
           <div className="text-center mb-6">
             <div className="text-6xl mb-3 animate-bounce">🎯</div>
             <h1 className="text-2xl font-bold text-gray-800">{t.appName}</h1>
-            <p className="text-gray-600 text-sm mt-2">{t.startPreparation}</p>
+            <p className="text-gray-600 text-sm mt-2">Login to start your preparation</p>
           </div>
 
           {error && (
@@ -101,71 +94,35 @@ function LoginContent() {
             </div>
           )}
 
-          {/* Google Login Button */}
-          <div className="mb-6">
-            <GoogleLogin />
-          </div>
-
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">{t.or}</span>
-            </div>
-          </div>
-
-          {/* Instagram Login */}
-          <form onSubmit={handleInstagramLogin}>
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">{t.instagramId}</label>
-              <div className="relative">
-                <span className="absolute left-3 top-3 text-gray-400">@</span>
-                <input
-                  type="text"
-                  value={instagramId}
-                  onChange={(e) => setInstagramId(e.target.value.replace('@', ''))}
-                  className="w-full pl-8 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  placeholder="username"
-                  required
-                />
+          {/* ONLY Google Login - NO Instagram Option */}
+          <button
+            onClick={() => login()}
+            disabled={loading}
+            className="w-full bg-white border border-gray-300 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-50 transition flex items-center justify-center gap-3"
+          >
+            {loading ? (
+              <div className="flex items-center gap-2">
+                <div className="w-5 h-5 border-2 border-gray-600 border-t-transparent rounded-full animate-spin"></div>
+                <span>Connecting...</span>
               </div>
-              <p className="text-xs text-gray-500 mt-1">{t.enterInstagram}</p>
-            </div>
-
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">{t.displayName}</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500"
-                placeholder={t.yourName}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition disabled:opacity-50"
-            >
-              {loading ? t.loading : t.loginWithInstagram}
-            </button>
-          </form>
+            ) : (
+              <>
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                </svg>
+                <span>Continue with Google</span>
+              </>
+            )}
+          </button>
+          <p className="text-xs text-gray-500 text-center mt-2">After login, you'll need to enter your Instagram ID</p>
 
           <div className="mt-6 text-center">
             <Link href="/admin-login" className="text-gray-500 text-sm hover:text-gray-700">
-              {t.adminLogin} →
+              Admin Login →
             </Link>
-          </div>
-
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <p className="text-center text-xs text-gray-500 mb-2">{t.quickDemoIds}</p>
-            <div className="flex flex-wrap justify-center gap-2">
-              <button onClick={() => { setInstagramId('kannada_exam_pro'); setName('Kannada Exam Pro User'); }} className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs hover:bg-gray-200 transition">@kannada_exam_pro</button>
-              <button onClick={() => { setInstagramId('kas_aspirant'); setName('KAS Aspirant'); }} className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs hover:bg-gray-200 transition">@kas_aspirant</button>
-              <button onClick={() => { setInstagramId('psi_preparation'); setName('PSI Student'); }} className="bg-gray-100 text-gray-600 px-3 py-1 rounded-lg text-xs hover:bg-gray-200 transition">@psi_preparation</button>
-            </div>
           </div>
         </div>
       </div>
@@ -180,7 +137,6 @@ export default function LoginPage() {
     setIsClient(true);
   }, []);
 
-  // Prevent hydration mismatch by not rendering until client-side
   if (!isClient) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-600 to-pink-600 flex items-center justify-center">
