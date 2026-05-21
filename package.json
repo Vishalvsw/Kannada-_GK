@@ -1,22 +1,20 @@
 {
-  "name": "gk-quiz-platform",
+  "name": "kannada-exam-pro",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "seed": "node scripts/seed.js",
-    "dummy": "node scripts/add-dummy-data.js",
-    "backup": "node scripts/backup.js"
+    "vercel-build": "next build"
   },
   "dependencies": {
-    "@react-oauth/google": "^0.13.5",
-    "axios": "^1.6.2",
-    "bcryptjs": "^2.4.3",
-    "dotenv": "^16.3.1",
+    "@react-oauth/google": "^0.12.2",
+    "@vercel/kv": "^3.0.0",
+    "dotenv": "^17.4.2",
+    "jsonwebtoken": "^9.0.0",
     "mongodb": "^7.2.0",
-    "mongoose": "^8.24.0",
+    "mongoose": "^9.6.2",
     "next": "14.0.4",
     "next-auth": "^4.24.5",
     "react": "18.2.0",

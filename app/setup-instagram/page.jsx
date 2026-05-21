@@ -12,7 +12,15 @@ export default function SetupInstagramPage() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
+    // Get temp user from localStorage
     const tempUser = localStorage.getItem('tempUser');
+    const existingUser = localStorage.getItem('user');
+    
+    if (existingUser) {
+      router.push('/');
+      return;
+    }
+    
     if (!tempUser) {
       router.push('/login');
       return;
@@ -24,7 +32,7 @@ export default function SetupInstagramPage() {
     e.preventDefault();
     
     if (!instagramId) {
-      setError('Please enter your Instagram ID');
+      setError('Instagram ID is required to continue');
       return;
     }
     
@@ -34,8 +42,9 @@ export default function SetupInstagramPage() {
     const cleanId = instagramId.replace('@', '');
     const tempUser = JSON.parse(localStorage.getItem('tempUser'));
     
+    // Complete user profile with Instagram ID
     const finalUser = {
-      id: tempUser.id,
+      id: tempUser.id || Date.now().toString(),
       name: tempUser.name,
       email: tempUser.email,
       picture: tempUser.picture,
@@ -46,19 +55,29 @@ export default function SetupInstagramPage() {
       score: 0,
       totalQuizzesTaken: 0,
       loginMethod: 'google',
+      instagramVerified: true,
       createdAt: new Date().toISOString()
     };
     
+    // Save to localStorage
     localStorage.setItem('user', JSON.stringify(finalUser));
     localStorage.setItem('token', 'user-token-' + Date.now());
     localStorage.removeItem('tempUser');
     
+    // Save to users list for leaderboard
     const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
     const userExists = existingUsers.find(u => u.instagramId === cleanId);
     if (!userExists) {
       existingUsers.push(finalUser);
       localStorage.setItem('users', JSON.stringify(existingUsers));
     }
+    
+    // Also save to admin users API
+    await fetch('/api/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(finalUser)
+    }).catch(console.error);
     
     setTimeout(() => {
       setLoading(false);
@@ -135,15 +154,6 @@ export default function SetupInstagramPage() {
               )}
             </button>
           </form>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => router.push('/')}
-              className="text-gray-500 text-sm hover:text-gray-700"
-            >
-              Skip for now (I'll add later)
-            </button>
-          </div>
         </div>
       </div>
     </div>

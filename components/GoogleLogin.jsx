@@ -14,37 +14,26 @@ export default function GoogleLogin({ onSuccess }) {
       setLoading(true);
       setError('');
       try {
-        // Get user info from Google
         const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
         });
         const userInfo = await userInfoResponse.json();
         
-        if (userInfo.error) {
-          throw new Error(userInfo.error_description);
-        }
-        
-        // Save temp user - will ask for Instagram ID
-        const tempUserData = {
+        // Save temp user, redirect to Instagram setup
+        const tempUser = {
           id: userInfo.sub,
           name: userInfo.name,
           email: userInfo.email,
           picture: userInfo.picture,
           googleId: userInfo.sub,
-          role: 'user',
-          score: 0,
-          totalQuizzesTaken: 0,
-          instagramId: null,
-          requiresInstagram: true
         };
         
-        localStorage.setItem('tempUser', JSON.stringify(tempUserData));
+        localStorage.setItem('tempUser', JSON.stringify(tempUser));
         localStorage.setItem('googleToken', tokenResponse.access_token);
         
-        // Show Instagram popup
-        router.push('/');
+        router.push('/setup-instagram');
         
-        if (onSuccess) onSuccess(tempUserData);
+        if (onSuccess) onSuccess(tempUser);
       } catch (error) {
         console.error('Google login error:', error);
         setError('Failed to get user info. Please try again.');
@@ -88,7 +77,6 @@ export default function GoogleLogin({ onSuccess }) {
           </>
         )}
       </button>
-      <p className="text-xs text-gray-500 text-center mt-2">After login, please enter your Instagram ID</p>
     </div>
   );
 }

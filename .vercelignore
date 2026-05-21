@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/.cache
+.next/cache
+
+# Development files
+README.md
+.gitignore
+.env.local
+.env.development
+
+# Backup files
+backups/
+scripts/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+
+# Test files
+__tests__/
+*.test.js
+*.spec.js

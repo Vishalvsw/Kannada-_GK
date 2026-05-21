@@ -1,67 +1,47 @@
 import { NextResponse } from 'next/server';
 
-const sampleQuestions = [
-  {
-    _id: "1",
-    question: "What is the capital of Karnataka?",
-    options: ["Mysore", "Hubli", "Bengaluru", "Mangaluru"],
-    answer: "Bengaluru",
-    category: "Karnataka GK",
-    difficulty: "easy"
-  },
-  {
-    _id: "2",
-    question: "Which is the official language of Karnataka?",
-    options: ["Tamil", "Telugu", "Kannada", "Malayalam"],
-    answer: "Kannada",
-    category: "Karnataka GK",
-    difficulty: "easy"
-  },
-  {
-    _id: "3",
-    question: "Who is known as 'Father of Karnataka'?",
-    options: ["Dr. Rajkumar", "Kuvempu", "Kengal Hanumanthaiah", "Sir M. Visvesvaraya"],
-    answer: "Kengal Hanumanthaiah",
-    category: "Karnataka History",
-    difficulty: "medium"
-  },
-  {
-    _id: "4",
-    question: "Which is the highest waterfall in Karnataka?",
-    options: ["Jog Falls", "Shivanasamudra Falls", "Hebbe Falls", "Abbey Falls"],
-    answer: "Jog Falls",
-    category: "Karnataka Geography",
-    difficulty: "easy"
-  },
-  {
-    _id: "5",
-    question: "The famous Hampi ruins are located in which district?",
-    options: ["Vijayapura", "Ballari", "Vijayanagara", "Raichur"],
-    answer: "Vijayanagara",
-    category: "Karnataka History",
-    difficulty: "medium"
-  }
-];
+// In-memory storage (persists across requests but resets on cold start)
+let questions = [];
 
 export async function GET() {
   try {
-    return NextResponse.json(sampleQuestions);
+    return NextResponse.json(questions);
   } catch (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json([]);
   }
 }
 
 export async function POST(request) {
   try {
     const body = await request.json();
+    
+    // Validate required fields
+    if (!body.question) {
+      return NextResponse.json({ error: 'Question is required' }, { status: 400 });
+    }
+    if (!body.options || body.options.length !== 4) {
+      return NextResponse.json({ error: '4 options are required' }, { status: 400 });
+    }
+    if (!body.answer) {
+      return NextResponse.json({ error: 'Answer is required' }, { status: 400 });
+    }
+    
     const newQuestion = {
       _id: Date.now().toString(),
-      ...body,
+      question: body.question,
+      options: body.options,
+      answer: body.answer,
+      category: body.category || 'General',
+      difficulty: body.difficulty || 'medium',
       createdAt: new Date().toISOString()
     };
-    sampleQuestions.push(newQuestion);
+    
+    questions.push(newQuestion);
+    console.log('Question added. Total:', questions.length);
+    
     return NextResponse.json(newQuestion, { status: 201 });
   } catch (error) {
+    console.error('POST Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -70,12 +50,8 @@ export async function DELETE(request) {
   try {
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const index = sampleQuestions.findIndex(q => q._id === id);
-    if (index !== -1) {
-      sampleQuestions.splice(index, 1);
-      return NextResponse.json({ message: 'Question deleted' });
-    }
-    return NextResponse.json({ error: 'Question not found' }, { status: 404 });
+    questions = questions.filter(q => q._id !== id);
+    return NextResponse.json({ message: 'Deleted' });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

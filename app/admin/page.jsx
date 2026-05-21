@@ -4,24 +4,34 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
-export default function AdminPage() {
+export default function AdminPanel() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [questions, setQuestions] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [results, setResults] = useState([]);
-  const [stats, setStats] = useState({});
+  const [admin, setAdmin] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  
+  // Data states
+  const [questions, setQuestions] = useState([]);
+  const [notes, setNotes] = useState([]);
+  const [currentAffairs, setCurrentAffairs] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [quizResults, setQuizResults] = useState([]);
+  
+  // Form states
+  const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({});
+  const [newAdmin, setNewAdmin] = useState({ name: '', email: '', password: '' });
+  const [message, setMessage] = useState({ text: '', type: '' });
 
   useEffect(() => {
-    const admin = localStorage.getItem('admin');
-    if (!admin) {
+    const token = localStorage.getItem('adminToken');
+    const adminData = localStorage.getItem('admin');
+    if (!token || !adminData) {
       router.push('/admin-login');
       return;
     }
+    setAdmin(JSON.parse(adminData));
     fetchData();
   }, [activeTab, router]);
 
@@ -29,36 +39,33 @@ export default function AdminPage() {
     setLoading(true);
     try {
       if (activeTab === 'dashboard') {
-        const [questionsRes, usersRes, resultsRes] = await Promise.all([
-          fetch('/api/questions'),
-          fetch('/api/admin/users'),
-          fetch('/api/quiz-results')
+        const [qRes, nRes, caRes, uRes, rRes] = await Promise.all([
+          fetch('/api/questions').catch(() => ({ json: () => [] })),
+          fetch('/api/admin/notes').catch(() => ({ json: () => [] })),
+          fetch('/api/admin/current-affairs').catch(() => ({ json: () => [] })),
+          fetch('/api/admin/users').catch(() => ({ json: () => [] })),
+          fetch('/api/quiz-results').catch(() => ({ json: () => [] }))
         ]);
-        const questionsData = await questionsRes.json();
-        const usersData = await usersRes.json();
-        const resultsData = await resultsRes.json();
-        
-        setQuestions(questionsData);
-        setUsers(usersData);
-        setResults(resultsData);
-        setStats({
-          totalUsers: usersData.length || 0,
-          totalQuestions: questionsData.length || 0,
-          totalAttempts: resultsData.length || 0,
-          avgScore: resultsData.length > 0 ? (resultsData.reduce((sum, r) => sum + r.score, 0) / resultsData.length).toFixed(1) : 0
-        });
-      } else if (activeTab === 'users') {
-        const response = await fetch('/api/admin/users');
-        const data = await response.json();
-        setUsers(data);
+        setQuestions(await qRes.json());
+        setNotes(await nRes.json());
+        setCurrentAffairs(await caRes.json());
+        setUsers(await uRes.json());
+        setQuizResults(await rRes.json());
       } else if (activeTab === 'questions') {
-        const response = await fetch('/api/questions');
-        const data = await response.json();
-        setQuestions(data);
+        const res = await fetch('/api/questions');
+        setQuestions(await res.json());
+      } else if (activeTab === 'notes') {
+        const res = await fetch('/api/admin/notes');
+        setNotes(await res.json());
+      } else if (activeTab === 'current-affairs') {
+        const res = await fetch('/api/admin/current-affairs');
+        setCurrentAffairs(await res.json());
+      } else if (activeTab === 'users') {
+        const res = await fetch('/api/admin/users');
+        setUsers(await res.json());
       } else if (activeTab === 'results') {
-        const response = await fetch('/api/quiz-results');
-        const data = await response.json();
-        setResults(data);
+        const res = await fetch('/api/quiz-results');
+        setQuizResults(await res.json());
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -70,7 +77,11 @@ export default function AdminPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     const method = editingItem ? 'PUT' : 'POST';
-    const url = editingItem ? `/api/questions?id=${editingItem._id}` : `/api/questions`;
+    let url = '';
+    
+    if (activeTab === 'questions') url = editingItem ? `/api/questions?id=${editingItem._id}` : '/api/questions';
+    else if (activeTab === 'notes') url = editingItem ? `/api/admin/notes?id=${editingItem.id}` : '/api/admin/notes';
+    else if (activeTab === 'current-affairs') url = editingItem ? `/api/admin/current-affairs?id=${editingItem.id}` : '/api/admin/current-affairs';
     
     try {
       const response = await fetch(url, {
@@ -79,263 +90,321 @@ export default function AdminPage() {
         body: JSON.stringify(formData),
       });
       if (response.ok) {
-        setShowForm(false);
+        setShowModal(false);
         setEditingItem(null);
         setFormData({});
         fetchData();
+        setMessage({ text: 'Saved successfully!', type: 'success' });
+        setTimeout(() => setMessage({ text: '', type: '' }), 3000);
       }
     } catch (error) {
-      console.error('Error saving:', error);
+      setMessage({ text: 'Error saving', type: 'error' });
     }
   };
 
   const handleDelete = async (id) => {
-    if (confirm('Delete this question?')) {
+    if (confirm('Delete this item? This cannot be undone.')) {
+      let url = '';
+      if (activeTab === 'questions') url = `/api/questions?id=${id}`;
+      else if (activeTab === 'notes') url = `/api/admin/notes?id=${id}`;
+      else if (activeTab === 'current-affairs') url = `/api/admin/current-affairs?id=${id}`;
+      
       try {
-        await fetch(`/api/questions?id=${id}`, { method: 'DELETE' });
+        await fetch(url, { method: 'DELETE' });
         fetchData();
+        setMessage({ text: 'Deleted successfully!', type: 'success' });
+        setTimeout(() => setMessage({ text: '', type: '' }), 3000);
       } catch (error) {
-        console.error('Error:', error);
+        setMessage({ text: 'Error deleting', type: 'error' });
       }
     }
   };
 
-  const handleDeleteResult = async (id) => {
-    if (confirm('Delete this result?')) {
-      try {
-        await fetch(`/api/quiz-results?id=${id}`, { method: 'DELETE' });
-        fetchData();
-      } catch (error) {
-        console.error('Error:', error);
-      }
+  const getFormFields = () => {
+    if (activeTab === 'questions') {
+      return (
+        <>
+          <div><label className="block text-sm font-medium mb-2">Question *</label><textarea required className="w-full p-2 border rounded-lg" rows="3" value={formData.question || ''} onChange={(e) => setFormData({ ...formData, question: e.target.value })} placeholder="Enter question" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-sm font-medium mb-2">Option A *</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[0] || ''} onChange={(e) => setFormData({ ...formData, options: [e.target.value, formData.options?.[1] || '', formData.options?.[2] || '', formData.options?.[3] || ''] })} placeholder="Option A" /></div>
+            <div><label className="block text-sm font-medium mb-2">Option B *</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[1] || ''} onChange={(e) => setFormData({ ...formData, options: [formData.options?.[0] || '', e.target.value, formData.options?.[2] || '', formData.options?.[3] || ''] })} placeholder="Option B" /></div>
+            <div><label className="block text-sm font-medium mb-2">Option C *</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[2] || ''} onChange={(e) => setFormData({ ...formData, options: [formData.options?.[0] || '', formData.options?.[1] || '', e.target.value, formData.options?.[3] || ''] })} placeholder="Option C" /></div>
+            <div><label className="block text-sm font-medium mb-2">Option D *</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[3] || ''} onChange={(e) => setFormData({ ...formData, options: [formData.options?.[0] || '', formData.options?.[1] || '', formData.options?.[2] || '', e.target.value] })} placeholder="Option D" /></div>
+          </div>
+          <div><label className="block text-sm font-medium mb-2">Correct Answer *</label><input required className="w-full p-2 border rounded-lg" value={formData.answer || ''} onChange={(e) => setFormData({ ...formData, answer: e.target.value })} placeholder="Correct answer" /></div>
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-sm font-medium mb-2">Category</label><select className="w-full p-2 border rounded-lg" value={formData.category || 'General'} onChange={(e) => setFormData({ ...formData, category: e.target.value })}><option>Karnataka GK</option><option>Karnataka History</option><option>Karnataka Geography</option><option>Current Affairs</option><option>General</option></select></div>
+            <div><label className="block text-sm font-medium mb-2">Difficulty</label><select className="w-full p-2 border rounded-lg" value={formData.difficulty || 'medium'} onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}><option>easy</option><option>medium</option><option>hard</option></select></div>
+          </div>
+        </>
+      );
+    } else if (activeTab === 'notes') {
+      return (
+        <>
+          <div><label className="block text-sm font-medium mb-2">Title (Kannada) *</label><input required className="w-full p-2 border rounded-lg" value={formData.title || ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Title (English)</label><input className="w-full p-2 border rounded-lg" value={formData.title_en || ''} onChange={(e) => setFormData({ ...formData, title_en: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Content (Kannada) *</label><textarea required className="w-full p-2 border rounded-lg" rows="5" value={formData.content || ''} onChange={(e) => setFormData({ ...formData, content: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Content (English)</label><textarea className="w-full p-2 border rounded-lg" rows="5" value={formData.content_en || ''} onChange={(e) => setFormData({ ...formData, content_en: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Category</label><input className="w-full p-2 border rounded-lg" value={formData.category || 'General'} onChange={(e) => setFormData({ ...formData, category: e.target.value })} /></div>
+        </>
+      );
+    } else if (activeTab === 'current-affairs') {
+      return (
+        <>
+          <div><label className="block text-sm font-medium mb-2">Title (Kannada) *</label><input required className="w-full p-2 border rounded-lg" value={formData.title || ''} onChange={(e) => setFormData({ ...formData, title: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Title (English)</label><input className="w-full p-2 border rounded-lg" value={formData.title_en || ''} onChange={(e) => setFormData({ ...formData, title_en: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Content (Kannada) *</label><textarea required className="w-full p-2 border rounded-lg" rows="4" value={formData.content || ''} onChange={(e) => setFormData({ ...formData, content: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Content (English)</label><textarea className="w-full p-2 border rounded-lg" rows="4" value={formData.content_en || ''} onChange={(e) => setFormData({ ...formData, content_en: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Date *</label><input type="date" required className="w-full p-2 border rounded-lg" value={formData.date || new Date().toISOString().split('T')[0]} onChange={(e) => setFormData({ ...formData, date: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Category</label><input className="w-full p-2 border rounded-lg" value={formData.category || 'General'} onChange={(e) => setFormData({ ...formData, category: e.target.value })} /></div>
+          <div><label className="block text-sm font-medium mb-2">Important</label><select className="w-full p-2 border rounded-lg" value={formData.important || false} onChange={(e) => setFormData({ ...formData, important: e.target.value === 'true' })}><option value="false">No</option><option value="true">Yes (Mark as Important)</option></select></div>
+        </>
+      );
     }
+    return null;
   };
 
-  if (loading) {
+  if (loading && activeTab === 'dashboard') {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
+        <div className="animate-spin w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Admin Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-800 to-indigo-800 text-white shadow-lg sticky top-0 z-50">
+        <div className="container mx-auto px-6 py-4">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl font-bold">Admin Panel</h1>
-              <p className="text-blue-100 text-sm">Manage Questions, Users & Results</p>
+              <h1 className="text-2xl font-bold">🎯 Kannada Exam Pro Admin</h1>
+              <p className="text-blue-200 text-sm">Complete Content Management System</p>
             </div>
-            <button onClick={() => { localStorage.removeItem('admin'); router.push('/'); }} className="bg-white/20 px-4 py-2 rounded-lg text-sm">Logout</button>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="font-semibold">{admin?.name}</p>
+                <p className="text-xs text-blue-200">{admin?.role}</p>
+              </div>
+              <button onClick={() => { localStorage.removeItem('adminToken'); localStorage.removeItem('admin'); router.push('/'); }} className="bg-red-500/20 hover:bg-red-500/30 px-4 py-2 rounded-lg transition">Logout</button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Message */}
+      {message.text && (
+        <div className={`fixed top-20 right-4 z-50 px-4 py-2 rounded-lg shadow-lg ${message.type === 'success' ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+          {message.text}
+        </div>
+      )}
+
+      {/* Navigation Tabs */}
       <div className="bg-white shadow-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex gap-1 py-2 overflow-x-auto">
-            {['dashboard', 'results', 'users', 'questions'].map(tab => (
+        <div className="container mx-auto px-6">
+          <div className="flex flex-wrap gap-1 py-2 overflow-x-auto">
+            {['dashboard', 'questions', 'notes', 'current-affairs', 'users', 'results'].map(tab => (
               <button
                 key={tab}
-                onClick={() => { setActiveTab(tab); setShowForm(false); }}
-                className={`px-4 py-2 rounded-lg font-medium capitalize whitespace-nowrap transition ${
-                  activeTab === tab ? 'bg-blue-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-                }`}
+                onClick={() => { setActiveTab(tab); setShowModal(false); }}
+                className={`px-5 py-2 rounded-lg font-medium capitalize transition-all whitespace-nowrap ${activeTab === tab ? 'bg-blue-600 text-white shadow-md' : 'text-gray-600 hover:bg-gray-100'}`}
               >
                 {tab === 'dashboard' && '📊 Dashboard'}
-                {tab === 'results' && `📋 Results (${results.length})`}
-                {tab === 'users' && `👥 Users (${users.length})`}
                 {tab === 'questions' && `❓ Questions (${questions.length})`}
+                {tab === 'notes' && `📝 Notes (${notes.length})`}
+                {tab === 'current-affairs' && `📰 Current Affairs (${currentAffairs.length})`}
+                {tab === 'users' && `👥 Users (${users.length})`}
+                {tab === 'results' && `📋 Results (${quizResults.length})`}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      {/* Main Content */}
+      <div className="container mx-auto px-6 py-8">
         {/* Dashboard */}
         {activeTab === 'dashboard' && (
           <div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-              <div className="bg-white rounded-xl shadow-md p-5">
-                <div className="flex justify-between items-center">
-                  <div><p className="text-gray-500 text-sm">Total Users</p><p className="text-3xl font-bold text-blue-600">{stats.totalUsers}</p></div>
-                  <span className="text-3xl">👥</span>
-                </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
+              <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex justify-between items-center"><div><p className="text-blue-100">Total Questions</p><p className="text-4xl font-bold">{questions.length}</p></div><div className="text-5xl">❓</div></div>
               </div>
-              <div className="bg-white rounded-xl shadow-md p-5">
-                <div className="flex justify-between items-center">
-                  <div><p className="text-gray-500 text-sm">Total Questions</p><p className="text-3xl font-bold text-green-600">{stats.totalQuestions}</p></div>
-                  <span className="text-3xl">❓</span>
-                </div>
+              <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex justify-between items-center"><div><p className="text-green-100">Total Notes</p><p className="text-4xl font-bold">{notes.length}</p></div><div className="text-5xl">📝</div></div>
               </div>
-              <div className="bg-white rounded-xl shadow-md p-5">
-                <div className="flex justify-between items-center">
-                  <div><p className="text-gray-500 text-sm">Quiz Attempts</p><p className="text-3xl font-bold text-orange-600">{stats.totalAttempts}</p></div>
-                  <span className="text-3xl">📝</span>
-                </div>
+              <div className="bg-gradient-to-r from-orange-500 to-orange-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex justify-between items-center"><div><p className="text-orange-100">Current Affairs</p><p className="text-4xl font-bold">{currentAffairs.length}</p></div><div className="text-5xl">📰</div></div>
               </div>
-              <div className="bg-white rounded-xl shadow-md p-5">
-                <div className="flex justify-between items-center">
-                  <div><p className="text-gray-500 text-sm">Avg Score</p><p className="text-3xl font-bold text-purple-600">{stats.avgScore}</p></div>
-                  <span className="text-3xl">🎯</span>
-                </div>
+              <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex justify-between items-center"><div><p className="text-purple-100">Total Users</p><p className="text-4xl font-bold">{users.length}</p></div><div className="text-5xl">👥</div></div>
+              </div>
+              <div className="bg-gradient-to-r from-pink-500 to-pink-600 rounded-xl shadow-lg p-6 text-white transform hover:scale-105 transition">
+                <div className="flex justify-between items-center"><div><p className="text-pink-100">Quiz Attempts</p><p className="text-4xl font-bold">{quizResults.length}</p></div><div className="text-5xl">📊</div></div>
               </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-md p-6">
-              <h3 className="font-bold text-gray-800 mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <button onClick={() => { setActiveTab('questions'); setShowForm(true); }} className="bg-blue-50 text-blue-600 p-3 rounded-lg text-left hover:bg-blue-100">➕ Add Question</button>
-                <button onClick={() => setActiveTab('results')} className="bg-green-50 text-green-600 p-3 rounded-lg text-left hover:bg-green-100">📊 View Results</button>
-                <button onClick={() => setActiveTab('users')} className="bg-purple-50 text-purple-600 p-3 rounded-lg text-left hover:bg-purple-100">👥 Manage Users</button>
-                <Link href="/quiz" className="bg-orange-50 text-orange-600 p-3 rounded-lg text-left hover:bg-orange-100">🎯 Take Quiz</Link>
+            <div className="grid lg:grid-cols-2 gap-6">
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">📋 Recent Quiz Results</h3>
+                {quizResults.slice(0, 5).map((result, idx) => (
+                  <div key={idx} className="border-b py-3 last:border-0"><div className="flex justify-between items-center"><div><p className="font-semibold">{result.userName}</p><p className="text-xs text-gray-500">@{result.instagramId}</p></div><div className="text-right"><p className="text-lg font-bold text-blue-600">{result.score}/{result.totalQuestions}</p><p className="text-xs text-gray-500">{result.percentage}%</p></div></div></div>
+                ))}
+                {quizResults.length === 0 && <p className="text-gray-500 text-center py-4">No quiz results yet</p>}
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Results Table */}
-        {activeTab === 'results' && (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Rank</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">User</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Instagram ID</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Score</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Correct</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Time</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Date</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {results.map((result, idx) => (
-                    <tr key={result.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white font-bold ${idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-gray-400' : idx === 2 ? 'bg-orange-500' : 'bg-blue-500'}`}>
-                          {idx + 1}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <div>
-                          <p className="font-medium text-gray-900">{result.userName}</p>
-                          <p className="text-xs text-gray-500">{result.userEmail}</p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">@{result.instagramId}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <span className="font-bold text-blue-600">{result.score}</span>
-                        <span className="text-xs text-gray-500">/{result.totalQuestions}</span>
-                      </td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-green-600">{result.correctCount}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">{result.timeFormatted}</td>
-                      <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">{new Date(result.date).toLocaleDateString()}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        <button onClick={() => handleDeleteResult(result.id)} className="text-red-600 hover:text-red-800 text-sm">Delete</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {results.length === 0 && (
-                <div className="p-8 text-center text-gray-500">No quiz results yet</div>
-              )}
+              <div className="bg-white rounded-xl shadow-lg p-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-4">⚡ Quick Actions</h3>
+                <div className="space-y-3">
+                  <button onClick={() => { setActiveTab('questions'); setShowModal(true); }} className="w-full bg-blue-50 text-blue-600 p-3 rounded-lg text-left hover:bg-blue-100 transition">➕ Add New Question</button>
+                  <button onClick={() => { setActiveTab('notes'); setShowModal(true); }} className="w-full bg-green-50 text-green-600 p-3 rounded-lg text-left hover:bg-green-100 transition">📝 Add New Note</button>
+                  <button onClick={() => { setActiveTab('current-affairs'); setShowModal(true); }} className="w-full bg-orange-50 text-orange-600 p-3 rounded-lg text-left hover:bg-orange-100 transition">📰 Add Current Affairs</button>
+                  <Link href="/quiz" className="block w-full bg-purple-50 text-purple-600 p-3 rounded-lg text-left hover:bg-purple-100 transition">🎯 Take Quiz</Link>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Users Table */}
-        {activeTab === 'users' && (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">User</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Instagram ID</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Score</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Quizzes</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Joined</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <img src={user.profileImage} className="w-8 h-8 rounded-full" />
-                          <div>
-                            <p className="font-medium">{user.name}</p>
-                            <p className="text-xs text-gray-500">{user.email}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">@{user.instagramId}</td>
-                      <td className="px-4 py-3 text-sm font-semibold text-blue-600">{user.score || 0}</td>
-                      <td className="px-4 py-3 text-sm">{user.totalQuizzesTaken || 0}</td>
-                      <td className="px-4 py-3 text-sm">{new Date(user.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {/* Questions */}
+        {/* Questions Management */}
         {activeTab === 'questions' && (
           <div>
-            <button onClick={() => { setShowForm(true); setEditingItem(null); setFormData({}); }} className="mb-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">+ Add Question</button>
-
-            {showForm && (
-              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
-                  <h2 className="text-2xl font-bold mb-4">{editingItem ? 'Edit' : 'Add'} Question</h2>
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div><label className="block text-sm font-medium mb-2">Question</label><textarea required className="w-full p-2 border rounded-lg" rows="3" value={formData.question || ''} onChange={(e) => setFormData({ ...formData, question: e.target.value })} /></div>
-                    <div><label className="block text-sm font-medium mb-2">Option A</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[0] || ''} onChange={(e) => setFormData({ ...formData, options: [e.target.value, formData.options?.[1] || '', formData.options?.[2] || '', formData.options?.[3] || ''] })} /></div>
-                    <div><label className="block text-sm font-medium mb-2">Option B</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[1] || ''} onChange={(e) => setFormData({ ...formData, options: [formData.options?.[0] || '', e.target.value, formData.options?.[2] || '', formData.options?.[3] || ''] })} /></div>
-                    <div><label className="block text-sm font-medium mb-2">Option C</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[2] || ''} onChange={(e) => setFormData({ ...formData, options: [formData.options?.[0] || '', formData.options?.[1] || '', e.target.value, formData.options?.[3] || ''] })} /></div>
-                    <div><label className="block text-sm font-medium mb-2">Option D</label><input required className="w-full p-2 border rounded-lg" value={formData.options?.[3] || ''} onChange={(e) => setFormData({ ...formData, options: [formData.options?.[0] || '', formData.options?.[1] || '', formData.options?.[2] || '', e.target.value] })} /></div>
-                    <div><label className="block text-sm font-medium mb-2">Correct Answer</label><input required className="w-full p-2 border rounded-lg" value={formData.answer || ''} onChange={(e) => setFormData({ ...formData, answer: e.target.value })} /></div>
-                    <div><label className="block text-sm font-medium mb-2">Category</label><select className="w-full p-2 border rounded-lg" value={formData.category || 'General'} onChange={(e) => setFormData({ ...formData, category: e.target.value })}><option>Karnataka GK</option><option>Karnataka History</option><option>Karnataka Geography</option><option>General</option></select></div>
-                    <div className="flex gap-3 pt-4"><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">Save</button><button type="button" onClick={() => { setShowForm(false); setEditingItem(null); }} className="px-4 py-2 bg-gray-300 rounded-lg">Cancel</button></div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {questions.map((q, idx) => (
-                <div key={q._id} className="bg-white rounded-lg shadow p-4">
-                  <div className="flex justify-between items-start">
-                    <div className="flex-1">
-                      <h3 className="font-semibold">{idx+1}. {q.question}</h3>
-                      <div className="grid grid-cols-2 gap-2 mt-2 text-sm text-gray-600">
-                        <div>A) {q.options?.[0]}</div><div>B) {q.options?.[1]}</div>
-                        <div>C) {q.options?.[2]}</div><div>D) {q.options?.[3]}</div>
+            <div className="flex justify-between items-center mb-4">
+              <button onClick={() => { setShowModal(true); setEditingItem(null); setFormData({}); }} className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">➕ Add New Question</button>
+              <p className="text-sm text-gray-500">Total: {questions.length} questions</p>
+            </div>
+            
+            {questions.length === 0 ? (
+              <div className="bg-white rounded-xl shadow p-12 text-center"><div className="text-6xl mb-4">📝</div><p className="text-gray-500">No questions yet. Click "Add New Question" to create one.</p></div>
+            ) : (
+              <div className="space-y-4">
+                {questions.map((q, idx) => (
+                  <div key={q._id} className="bg-white rounded-lg shadow p-5 hover:shadow-md transition">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-bold text-blue-600">#{idx + 1}</span>
+                          <span className="text-xs bg-gray-100 px-2 py-1 rounded">{q.category}</span>
+                          <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">{q.difficulty}</span>
+                        </div>
+                        <h3 className="font-semibold text-gray-800 mb-3">{q.question}</h3>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div className="p-2 bg-gray-50 rounded">A) {q.options?.[0]}</div>
+                          <div className="p-2 bg-gray-50 rounded">B) {q.options?.[1]}</div>
+                          <div className="p-2 bg-gray-50 rounded">C) {q.options?.[2]}</div>
+                          <div className="p-2 bg-gray-50 rounded">D) {q.options?.[3]}</div>
+                        </div>
+                        <p className="text-green-600 text-sm mt-3">✓ Correct Answer: {q.answer}</p>
                       </div>
-                      <p className="text-sm text-green-600 mt-2">✓ Answer: {q.answer}</p>
-                    </div>
-                    <div className="flex gap-2 ml-4">
-                      <button onClick={() => { setEditingItem(q); setFormData(q); setShowForm(true); }} className="px-3 py-1 bg-yellow-500 text-white rounded text-sm">Edit</button>
-                      <button onClick={() => handleDelete(q._id)} className="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button>
+                      <div className="flex gap-2 ml-4">
+                        <button onClick={() => { setEditingItem(q); setFormData(q); setShowModal(true); }} className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600">Edit</button>
+                        <button onClick={() => handleDelete(q._id)} className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700">Delete</button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Notes Management */}
+        {activeTab === 'notes' && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <button onClick={() => { setShowModal(true); setEditingItem(null); setFormData({}); }} className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">➕ Add New Note</button>
+              <p className="text-sm text-gray-500">Total: {notes.length} notes</p>
+            </div>
+            {notes.length === 0 ? (
+              <div className="bg-white rounded-xl shadow p-12 text-center"><div className="text-6xl mb-4">📝</div><p className="text-gray-500">No notes yet. Click "Add New Note" to create one.</p></div>
+            ) : (
+              <div className="space-y-4">
+                {notes.map(note => (
+                  <div key={note.id} className="bg-white rounded-lg shadow p-5">
+                    <div className="flex justify-between items-start">
+                      <div><h3 className="font-semibold text-gray-800">{note.title}</h3><p className="text-sm text-gray-500 mt-1">{note.category}</p><p className="text-gray-600 mt-2 line-clamp-2">{note.content?.substring(0, 150)}...</p></div>
+                      <div className="flex gap-2"><button onClick={() => { setEditingItem(note); setFormData(note); setShowModal(true); }} className="px-3 py-1 bg-yellow-500 text-white rounded text-sm">Edit</button><button onClick={() => handleDelete(note.id)} className="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Current Affairs Management */}
+        {activeTab === 'current-affairs' && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <button onClick={() => { setShowModal(true); setEditingItem(null); setFormData({}); }} className="px-5 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">➕ Add Current Affairs</button>
+              <p className="text-sm text-gray-500">Total: {currentAffairs.length} items</p>
+            </div>
+            {currentAffairs.length === 0 ? (
+              <div className="bg-white rounded-xl shadow p-12 text-center"><div className="text-6xl mb-4">📰</div><p className="text-gray-500">No current affairs yet. Click "Add Current Affairs" to create one.</p></div>
+            ) : (
+              <div className="space-y-4">
+                {currentAffairs.map(ca => (
+                  <div key={ca.id} className="bg-white rounded-lg shadow p-5">
+                    <div className="flex justify-between items-start">
+                      <div><div className="flex items-center gap-2"><h3 className="font-semibold text-gray-800">{ca.title}</h3>{ca.important && <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">Important</span>}</div><p className="text-sm text-gray-500 mt-1">{ca.date} | {ca.category}</p><p className="text-gray-600 mt-2 line-clamp-2">{ca.content?.substring(0, 150)}...</p></div>
+                      <div className="flex gap-2"><button onClick={() => { setEditingItem(ca); setFormData(ca); setShowModal(true); }} className="px-3 py-1 bg-yellow-500 text-white rounded text-sm">Edit</button><button onClick={() => handleDelete(ca.id)} className="px-3 py-1 bg-red-600 text-white rounded text-sm">Delete</button></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Users Management */}
+        {activeTab === 'users' && (
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500">User</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Email/Instagram</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Role</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Score</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Quizzes</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500">Joined</th></tr>
+                </thead>
+                <tbody>
+                  {users.map(user => (
+                    <tr key={user._id} className="hover:bg-gray-50"><td className="px-6 py-4"><div className="flex items-center gap-3"><img src={user.profileImage} className="w-10 h-10 rounded-full" /><div><p className="font-medium">{user.name}</p><p className="text-xs text-gray-500">@{user.instagramId}</p></div></div></td><td className="px-6 py-4">{user.email || user.instagramId}@instagram</td><td className="px-6 py-4"><span className={`px-2 py-1 text-xs rounded-full ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>{user.role || 'user'}</span></td><td className="px-6 py-4 font-semibold text-blue-600">{user.score || 0}</td><td className="px-6 py-4">{user.totalQuizzesTaken || 0}</td><td className="px-6 py-4 text-sm">{new Date(user.createdAt).toLocaleDateString()}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              {users.length === 0 && <div className="p-8 text-center"><p className="text-gray-500">No users yet</p></div>}
+            </div>
+          </div>
+        )}
+
+        {/* Quiz Results */}
+        {activeTab === 'results' && (
+          <div className="bg-white rounded-xl shadow overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50"><tr><th className="px-4 py-3 text-left text-xs font-medium text-gray-500">User</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Instagram</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Score</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Percentage</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Time</th><th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Date</th></tr></thead>
+                <tbody>
+                  {quizResults.map(result => (
+                    <tr key={result.id} className="hover:bg-gray-50"><td className="px-4 py-3"><p className="font-medium">{result.userName}</p><p className="text-xs text-gray-500">{result.userEmail}</p></td><td className="px-4 py-3">@{result.instagramId}</td><td className="px-4 py-3"><span className="font-bold text-blue-600">{result.score}</span>/{result.totalQuestions}</td><td className="px-4 py-3"><span className={`px-2 py-1 rounded-full text-xs ${result.percentage >= 70 ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>{result.percentage}%</span></td><td className="px-4 py-3">{result.timeFormatted}</td><td className="px-4 py-3 text-sm">{new Date(result.date).toLocaleDateString()}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+              {quizResults.length === 0 && <div className="p-8 text-center"><p className="text-gray-500">No quiz results yet</p></div>}
             </div>
           </div>
         )}
       </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <div className="flex justify-between items-center mb-4"><h2 className="text-2xl font-bold">{editingItem ? 'Edit' : 'Add'} {activeTab.replace('-', ' ')}</h2><button onClick={() => { setShowModal(false); setEditingItem(null); }} className="text-gray-400 hover:text-gray-600 text-2xl">✕</button></div>
+              <form onSubmit={handleSubmit} className="space-y-4">{getFormFields()}<div className="flex gap-3 pt-4"><button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">Save</button><button type="button" onClick={() => { setShowModal(false); setEditingItem(null); }} className="px-4 py-2 bg-gray-300 rounded-lg">Cancel</button></div></form>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

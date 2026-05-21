@@ -61,3 +61,6 @@ backend/__pycache__/
 
 .vercel
 .env.production
+
+.env*.local
+data/*.json

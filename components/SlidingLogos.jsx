@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Image from 'next/image';
 
 const logos = [
-  { name: 'Karnataka Civil', image: '/logos/defence.jpg', alt: 'Karnataka Civil' },
-  { name: 'Karnataka Police', image: '/logos/police.png', alt: 'Karnataka Police' },
-  { name: 'Defence Corps', image: '/logos/defence.jpg', alt: 'Defence Corps' },
-  { name: 'Home Affairs', image: '/logos/defence.jpg', alt: 'Ministry of Home Affairs' },
-  { name: 'Govt of India', image: '/logos/defence.jpg', alt: 'Government of India' },
+  { name: 'KAS Exam', icon: '👨‍⚖️', color: 'from-blue-500 to-blue-600' },
+  { name: 'PSI Exam', icon: '👮', color: 'from-green-500 to-green-600' },
+  { name: 'PDO Exam', icon: '📋', color: 'from-purple-500 to-purple-600' },
+  { name: 'FDA Exam', icon: '📝', color: 'from-orange-500 to-orange-600' },
+  { name: 'SDA Exam', icon: '📊', color: 'from-red-500 to-red-600' },
+  { name: 'Police Exam', icon: '🚔', color: 'from-indigo-500 to-indigo-600' },
 ];
 
 export default function SlidingLogos() {
@@ -25,15 +25,8 @@ export default function SlidingLogos() {
 
   return (
     <div className="inline-flex items-center gap-4 bg-white/20 backdrop-blur-lg rounded-full px-6 py-3 animate-slide-left">
-      <div className="w-12 h-12 rounded-full overflow-hidden bg-white flex items-center justify-center">
-        <img 
-          src={currentLogo.image} 
-          alt={currentLogo.alt}
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            e.target.src = 'https://ui-avatars.com/api/?name=' + currentLogo.name + '&background=3B82F6&color=fff';
-          }}
-        />
+      <div className={`w-12 h-12 rounded-full bg-gradient-to-r ${currentLogo.color} flex items-center justify-center text-2xl shadow-lg`}>
+        {currentLogo.icon}
       </div>
       <span className="font-semibold text-sm">{currentLogo.name}</span>
       <span className="w-2 h-2 rounded-full bg-white/50"></span>

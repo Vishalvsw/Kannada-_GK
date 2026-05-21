@@ -1,21 +1,23 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useState, useEffect } from 'react';
 import Logo from '@/components/Logo';
 import { useLanguage } from '@/contexts/LanguageContext';
 import LanguageToggle from '@/components/LanguageToggle';
+import ClientOnly from '@/components/ClientOnly';
 
 export default function ResponsiveNav({ children }) {
   const { t } = useLanguage();
   const pathname = usePathname();
   const router = useRouter();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [deviceType, setDeviceType] = useState('mobile');
   const [user, setUser] = useState(null);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     const handleResize = () => {
       const width = window.innerWidth;
       if (width <= 480) setDeviceType('mobile');
@@ -47,9 +49,14 @@ export default function ResponsiveNav({ children }) {
   
   if (user) navItems.push({ path: '/profile', label: t.profile, icon: '👤' });
 
+  if (!mounted) {
+    return <div className="min-h-screen bg-white"></div>;
+  }
+
+  // Mobile View
   if (deviceType === 'mobile') {
     return (
-      <>
+      <ClientOnly>
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-4 py-3">
           <div className="flex justify-between items-center">
             <Link href="/" className="flex items-center gap-2">
@@ -83,12 +90,13 @@ export default function ResponsiveNav({ children }) {
             ))}
           </div>
         </div>
-      </>
+      </ClientOnly>
     );
   }
 
+  // Desktop View
   return (
-    <>
+    <ClientOnly>
       <nav className="bg-white shadow-lg sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -113,7 +121,10 @@ export default function ResponsiveNav({ children }) {
               {user ? (
                 <div className="flex items-center space-x-3">
                   <img src={user.profileImage} className="w-8 h-8 rounded-full" />
-                  <div className="hidden sm:block"><p className="text-sm font-semibold">@{user.instagramId}</p><p className="text-xs text-gray-500">{user.score || 0} {t.points}</p></div>
+                  <div className="hidden sm:block">
+                    <p className="text-sm font-semibold">@{user.instagramId}</p>
+                    <p className="text-xs text-gray-500">{user.score || 0} {t.points}</p>
+                  </div>
                   <button onClick={handleLogout} className="px-4 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50">{t.logout}</button>
                 </div>
               ) : (
@@ -124,6 +135,6 @@ export default function ResponsiveNav({ children }) {
         </div>
       </nav>
       <main>{children}</main>
-    </>
+    </ClientOnly>
   );
 }
